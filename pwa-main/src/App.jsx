@@ -5,196 +5,84 @@ const App = () => {
   const [weatherData, setWeatherData] = useState(null);
   const [cityName, setCityName] = useState("");
   const [error, setError] = useState(null);
-  const [isCelsius, setIsCelsius] = useState(true);
+
+  // New state to check loading
   const [loading, setLoading] = useState(false);
-  const [recentSearches, setRecentSearches] = useState([]);
 
-  // Geolocation + saved searches + push notification
   useEffect(() => {
-    const savedSearches = JSON.parse(localStorage.getItem("recentSearches")) || [];
-    setRecentSearches(savedSearches);
-
-    // Geolocation weather
     if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(async (position) => {
-        try {
+      setLoading(true);
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
           const { latitude, longitude } = position.coords;
-          const res = await fetch(
-            `https://api.weatherapi.com/v1/current.json?key=YOUR_API_KEY&q=${latitude},${longitude}`
-          );
-          const data = await res.json();
-          setWeatherData(data);
-          updateRecentSearches(data.location.name);
-        } catch (err) {
-          console.error("Geo Error", err);
+          try {
+            const geoRes = await fetch(`https://api.weatherapi.com/v1/current.json?key=b0a7bad410d5400c8c3145734251107&q=${latitude},${longitude}`);
+            const data = await geoRes.json();
+            setWeatherData(data);
+            setCityName(data.location.name);
+            setLoading(false);
+          } catch (err) {
+            setError("Failed to fetch location-based weather.");
+            setLoading(false);
+          }
+        },
+        (error) => {
+          console.error(error);
+          setError("Location permission denied.");
+          setLoading(false);
         }
-      });
-    }
-
-    // Register Service Worker & Request Notification
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/serviceWorker.js").then((reg) => {
-        console.log("SW registered", reg);
-      });
-
-      Notification.requestPermission().then((perm) => {
-        if (perm === "granted") {
-          new Notification("Notifications enabled!", {
-            body: "You’ll now receive weather alerts.",
-          });
-        }
-      });
-    }
-
-    // Sync queued offline requests
-    if (navigator.onLine) {
-      const queued = JSON.parse(localStorage.getItem("offlineQueue") || "[]");
-      queued.forEach(city => fetchData(city));
-      localStorage.removeItem("offlineQueue");
+      );
+    } else {
+      setError("Geolocation is not supported by this browser.");
     }
   }, []);
 
-  const fetchData = async (city) => {
-    if (!navigator.onLine) {
-      queueOffline(city);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
+  const handleSearch = async () => {
     try {
-      const data = await fetchWeather(city);
+      const data = await fetchWeather(cityName);
       setWeatherData(data);
-      setCityName("");
-      updateRecentSearches(data.location.name);
-    } catch (error) {
-      setError("City not found. Please try again.");
-      setWeatherData(null);
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      setError("Could not fetch weather for the specified city.");
     }
-  };
-
-  const queueOffline = (city) => {
-    const queued = JSON.parse(localStorage.getItem("offlineQueue") || "[]");
-    queued.push(city);
-    localStorage.setItem("offlineQueue", JSON.stringify(queued));
-
-    if ("serviceWorker" in navigator && "SyncManager" in window) {
-      navigator.serviceWorker.ready.then((reg) => {
-        reg.sync.register("sync-weather");
-      });
-    }
-
-    alert("Offline! Your search will be sent once you’re online.");
-  };
-
-  const handleKeyPress = (e) => {
-    if (e.key === "Enter") {
-      fetchData(cityName);
-    }
-  };
-
-  const updateRecentSearches = (city) => {
-    const updated = [city, ...recentSearches.filter(c => c !== city)].slice(0, 5);
-    setRecentSearches(updated);
-    localStorage.setItem("recentSearches", JSON.stringify(updated));
-  };
-
-  const handleRecentSearch = (city) => {
-    setCityName(city);
-    fetchData(city);
-  };
-
-  const toggleTemperatureUnit = () => {
-    setIsCelsius(!isCelsius);
-  };
-
-  const getTemperature = () => {
-    if (!weatherData) return "";
-    return isCelsius
-      ? `${weatherData.current.temp_c} °C`
-      : `${weatherData.current.temp_f} °F`;
   };
 
   return (
     <div>
-      <div className="app">
-        <h1>Weather App</h1>
-        <div className="search">
-          <input
-            type="text"
-            placeholder="Enter city name..."
-            value={cityName}
-            onChange={(e) => setCityName(e.target.value)}
-            onKeyDown={handleKeyPress}
-          />
+      <h1>Weather App</h1>
+      <input
+        type="text"
+        value={cityName}
+        onChange={(e) => setCityName(e.target.value)}
+        placeholder="Enter city name"
+      />
+      <button onClick={handleSearch}>Search</button>
+
+      {loading && <p>Loading local weather...</p>}
+      {error && <p style={{ color: "red" }}>{error}</p>}
+      {weatherData && (
+        <div>
+          <h2>{weatherData.location.name}</h2>
+          <p>{weatherData.current.temp_c}°C</p>
+          <p>{weatherData.current.condition.text}</p>
         </div>
-
-        <div className="unit-toggle">
-          <span>°C</span>
-          <label className="switch">
-            <input
-              type="checkbox"
-              checked={!isCelsius}
-              onChange={toggleTemperatureUnit}
-            />
-            <span className="slider round"></span>
-          </label>
-          <span>°F</span>
-        </div>
-
-        {loading && <div className="loading">Loading...</div>}
-        {error && <div className="error">{error}</div>}
-
-        {weatherData && (
-          <div className="weather-info">
-            <h2>
-              {weatherData.location.name}, {weatherData.location.region}, {weatherData.location.country}
-            </h2>
-            <p>Temperature: {getTemperature()}</p>
-            <p>Condition: {weatherData.current.condition.text}</p>
-            <img
-              src={weatherData.current.condition.icon}
-              alt={weatherData.current.condition.text}
-            />
-            <p>Humidity: {weatherData.current.humidity}%</p>
-            <p>Pressure: {weatherData.current.pressure_mb} mb</p>
-            <p>Visibility: {weatherData.current.vis_km} km</p>
-          </div>
-        )}
-
-        {recentSearches.length > 0 && (
-          <div className="recent-searches">
-            <h3>Recent Searches</h3>
-            <ul>
-              {recentSearches.map((city, index) => (
-                <li key={index} onClick={() => handleRecentSearch(city)}>
-                  {city}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 };
 
 export default App;
-const [city, setCity] = useState("");
+import { messaging, getToken } from "./firebase/firebase";
 
-const handleSearch = () => {
-  if (!city) return;
-  if (navigator.onLine) {
-    // call API
-  } else {
-    const queue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
-    queue.push(city);
-    localStorage.setItem('offlineQueue', JSON.stringify(queue));
-    navigator.serviceWorker.ready.then((reg) => {
-      reg.sync.register('sync-weather');
-    });
-    alert("Offline! Your request is queued.");
-  }
-};
+useEffect(() => {
+  // Request notification permission
+  Notification.requestPermission().then((permission) => {
+    if (permission === "granted") {
+      getToken(messaging, { vapidKey: "YOUR_VAPID_KEY_HERE" })
+        .then((token) => {
+          console.log("FCM Token:", token);
+          // Save token to backend if needed
+        })
+        .catch((err) => console.error("Token Error:", err));
+    }
+  });
+}, []);
