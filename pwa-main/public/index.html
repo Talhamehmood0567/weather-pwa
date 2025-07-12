@@ -1,0 +1,22 @@
+<!-- index.html -->
+<button onclick="getWeatherByLocation()">Get Local Weather</button>
+<div id="weather"></div>
+
+<script>
+  function getWeatherByLocation() {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+
+        // Replace with your weather API and key
+        const apiKey = "YOUR_API_KEY";
+        const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`);
+        const data = await response.json();
+        document.getElementById("weather").innerText = `Location: ${data.name}, Temp: ${data.main.temp}°C`;
+      }, (err) => alert("Geolocation error: " + err.message));
+    } else {
+      alert("Geolocation not supported.");
+    }
+  }
+</script>
